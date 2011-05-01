@@ -15,6 +15,8 @@
 
 namespace bml {
 
+typedef std::list<node *> node_list;
+
 class node {
 	/* document is my friend ! */
 	friend class document;
@@ -22,9 +24,9 @@ class node {
 	/* hold nodes childs */
 	node * child;
 	/* hold the parent childs */
-	node * next;
+	node * parent_child_next;
 	/* store data length */
-	int64_t data_length;
+	int64_t data_size;
 	/* store data */
 	char * data;
 
@@ -56,9 +58,12 @@ public:
 	int64_t id;
 
 	/* create a node */
-	node(int64_t id, uint64_t length = 0, char const * data = 0);
+	node(int64_t id, uint64_t size = 0, char const * data = 0);
 
-	/* conveniant template which allow
+	/* destruct */
+	~node();
+
+	/* convenient template which allow
 	 * recast.
 	 */
 	template<typename T>
@@ -70,10 +75,10 @@ public:
 	}
 
 	/* find recusivly all node with same id */
-	std::list<node *> get_nodes_by_id(int64_t id);
+	node_list get_nodes_by_id(int64_t id);
 
 	/* get childs */
-	std::list<node *> get_childs();
+	node_list get_childs();
 
 	void append_child(node * c);
 	void remove_child(node * c);

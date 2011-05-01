@@ -13,8 +13,8 @@ namespace bml {
 
 node::node(std::fstream & f) {
 	read_header(f);
-	std::cout << "read header = " << (int)_header_size << std::endl;
-	if(is_invalid)
+	std::cout << "read header = " << (int) _header_size << std::endl;
+	if (is_invalid)
 		return;
 
 	uint64_t s = 0;
@@ -186,12 +186,20 @@ void node::write_header(std::fstream & f) const {
 	f.write(header_data, _header_size);
 }
 
-node * node::get_node(...) {
+node & node::operator[](int64_t id) {
+	node_list::iterator i = child.begin();
+	while (i != child.end()) {
+		if ((*i)->id == id)
+			return *(*i);
+		++i;
+	}
+
+	throw exception("ID not found");
 
 }
 
-char * node::get_value(...) {
-
+char * node::operator*() {
+	return data;
 }
 
 }

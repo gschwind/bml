@@ -22,11 +22,11 @@ node::node(std::fstream & f) {
 	node_header h;
 	f.read(reinterpret_cast<char *>(&h), sizeof(node_header));
 	id = h.id;
-	data_length = h.data_length;
-	data = new char[data_length];
-	f.read(data, data_length);
+	data_size = h.data_length;
+	data = new char[data_size];
+	f.read(data, data_size);
 	/* back to the begin of head */
-	f.seekg(0 - data_length - sizeof(node_header), std::ios::cur);
+	f.seekg(0 - data_size - sizeof(node_header), std::ios::cur);
 
 	/* go to the child */
 	f.seekg(h.child_offset, std::ios::cur);
@@ -35,7 +35,7 @@ node::node(std::fstream & f) {
 	f.seekg(0 - h.child_offset, std::ios::cur);
 	/* go to the next */
 	f.seekg(h.next_offset, std::ios::cur);
-	next = new node(f);
+	parent_child_next = new node(f);
 	/* back to the head */
 	f.seekg(0 - h.next_offset);
 }
@@ -46,26 +46,26 @@ int64_t node::update_write_size() const {
 	else
 		child_size = 0;
 	if (next_size)
-		next_size = next->update_write_size();
+		next_size = parent_child_next->update_write_size();
 	else
 		next_size = 0;
 
-	return data_length + sizeof(node_header) + child_size + next_size;
+	return data_size + sizeof(node_header) + child_size + next_size;
 }
 
 void node::write(std::fstream &f) const {
 	node_header h;
 	h.id = id;
-	h.data_length = data_length;
-	h.child_offset = data_length + sizeof(node_header);
-	h.next_offset = data_length + sizeof(node_header) + child_size;
+	h.data_length = data_size;
+	h.child_offset = data_size + sizeof(node_header);
+	h.next_offset = data_size + sizeof(node_header) + child_size;
 	f.write(reinterpret_cast<char *>(&h), sizeof(node_header));
-	if (data_length > 0)
-		f.write(data, data_length);
+	if (data_size > 0)
+		f.write(data, data_size);
 	if (child)
 		child->write(f);
-	if (next)
-		next->write(f);
+	if (parent_child_next)
+		parent_child_next->write(f);
 }
 
 node::node(int64_t id, uint64_t length, char const * data) {
@@ -75,40 +75,46 @@ node::node(int64_t id, uint64_t length, char const * data) {
 	child = 0;
 }
 
-std::list<node *> node::get_nodes_by_id(int64_t id) {
-	std::list<node *> l;
+node::~node() {
+	if(data)
+		delete data;
+	data = 0;
+}
+
+node_list node::get_nodes_by_id(int64_t id) {
+	node_list l;
 	if (child) {
 		node * cur = child;
 		while (cur) {
 			if (cur->id == id) {
 				l.push_back(cur);
 			}
-			std::list<node *> subl = cur->get_nodes_by_id(id);
+			node_list subl = cur->get_nodes_by_id(id);
 			l.splice(l.end(), subl);
-			cur = cur->next;
+			cur = cur->parent_child_next;
 		}
 	}
 	return l;
 }
 
-std::list<node *> node::get_childs() {
-	std::list<node *> l;
+node_list node::get_childs() {
+	node_list l;
 	node * cur = child;
 	while (cur) {
 		l.push_back(cur);
-		cur = cur->next;
+		cur = cur->parent_child_next;
 	}
 	return l;
 }
 
 void node::append_child(node * c) {
-	c->next = 0;
+	c->parent_child_next = 0;
 	if (child) {
 		node * cur = child;
-		while (cur->next) {
-			cur = cur->next;
+		while (cur->parent_child_next) {
+			cur = cur->parent_child_next;
 		}
-		cur->next = c;
+		cur->parent_child_next = c;
 	} else {
 		child = c;
 	}
@@ -117,8 +123,8 @@ void node::append_child(node * c) {
 void node::remove_child(node * c) {
 	node * cur = child;
 	while (cur) {
-		if (cur->next == c) {
-			cur->next = c->next;
+		if (cur->parent_child_next == c) {
+			cur->parent_child_next = c->parent_child_next;
 		}
 	}
 }
@@ -126,27 +132,27 @@ void node::remove_child(node * c) {
 void node::replace_child(node * old, node * c) {
 	node * cur = child;
 	while (cur) {
-		if (cur->next == old) {
-			c->next = old->next;
-			cur->next = c;
+		if (cur->parent_child_next == old) {
+			c->parent_child_next = old->parent_child_next;
+			cur->parent_child_next = c;
 		}
 	}
 }
 
 node * node::clone() {
-	node * result = new node(id, data_length, data);
+	node * result = new node(id, data_size, data);
 	if (child)
 		result->child = child->clone();
 	else
 		child = 0;
-	result->next = 0;
+	result->parent_child_next = 0;
 	return result;
 }
 
 void node::set_data(uint64_t size, char const * data) {
-	if (data)
-		delete[] data;
-	data_length = size;
+	if (this->data)
+		delete[] this->data;
+	data_size = size;
 	if (size) {
 		this->data = new char[size];
 		memcpy(this->data, data, size);

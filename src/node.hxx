@@ -89,13 +89,12 @@ public:
 	void set_data(uint64_t size, char const * data);
 	void read_header(std::fstream & f);
 
-	node * get_node(...);
-	char * get_value(...);
-
 	char get_length(char const * v) const;
 	char prepare_header() const;
 	void write_header(std::fstream & f) const;
 
+	node & operator[] (int64_t id);
+	char * operator*();
 
 };
 
@@ -116,6 +115,10 @@ template<>
 class tnode<std::string> : public node {
 public:
 	tnode(int64_t id, std::string & v) :
+		node(id, v.size() + 1, v.c_str()) {
+	}
+
+	tnode(int64_t id, std::string v) :
 		node(id, v.size() + 1, v.c_str()) {
 	}
 };
