@@ -1,158 +1,197 @@
 /*
  * node.cxx
  *
- *  Created on: 30 avr. 2011
+ *  Created on: 1 mai 2011
  *      Author: gschwind
  */
 
 #include "node.hxx"
 #include <cstring>
+#include <iostream>
 
 namespace bml {
 
-struct node_header {
-	int64_t id;
-	int64_t child_offset;
-	int64_t next_offset;
-	uint64_t data_length;
-}__attribute__((packed));
-
 node::node(std::fstream & f) {
-	/* f is at top of header */
-	node_header h;
-	f.read(reinterpret_cast<char *>(&h), sizeof(node_header));
-	id = h.id;
-	data_length = h.data_length;
-	data = new char[data_length];
-	f.read(data, data_length);
-	/* back to the begin of head */
-	f.seekg(0 - data_length - sizeof(node_header), std::ios::cur);
+	read_header(f);
+	std::cout << "read header = " << (int)_header_size << std::endl;
+	if(is_invalid)
+		return;
 
-	/* go to the child */
-	f.seekg(h.child_offset, std::ios::cur);
-	child = new node(f);
-	/* back to the header */
-	f.seekg(0 - h.child_offset, std::ios::cur);
-	/* go to the next */
-	f.seekg(h.next_offset, std::ios::cur);
-	next = new node(f);
-	/* back to the head */
-	f.seekg(0 - h.next_offset);
+	uint64_t s = 0;
+	for (;;) {
+		node * n = new node(f);
+		if (n->is_invalid) {
+			s += 1;
+			delete n;
+			break;
+		}
+		s += n->_content_size + n->_header_size;
+		child.push_back(n);
+	}
+	data_size = _content_size - s;
+	std::cout << "data_size = " << data_size << std::endl;
+	if (data_size > 0) {
+		data = new char[data_size];
+		f.read(data, data_size);
+	} else {
+		data = 0;
+	}
 }
 
-int64_t node::update_write_size() const {
-	if (child)
-		child_size = child->update_write_size();
-	else
-		child_size = 0;
-	if (next_size)
-		next_size = next->update_write_size();
-	else
-		next_size = 0;
-
-	return data_length + sizeof(node_header) + child_size + next_size;
+void node::prepare_write() const {
+	_content_size = 0;
+	node_list::const_iterator i = child.begin();
+	while (i != child.end()) {
+		(*i)->prepare_write();
+		_content_size += (*i)->_content_size + (*i)->_header_size;
+		++i;
+	}
+	_content_size += data_size + 1;
+	prepare_header();
 }
 
-void node::write(std::fstream &f) const {
-	node_header h;
-	h.id = id;
-	h.data_length = data_length;
-	h.child_offset = data_length + sizeof(node_header);
-	h.next_offset = data_length + sizeof(node_header) + child_size;
-	f.write(reinterpret_cast<char *>(&h), sizeof(node_header));
-	if (data_length > 0)
-		f.write(data, data_length);
-	if (child)
-		child->write(f);
-	if (next)
-		next->write(f);
+void node::write(std::fstream & f) const {
+	write_header(f);
+	node_list::const_iterator i = child.begin();
+	while (i != child.end()) {
+		(*i)->write(f);
+		++i;
+	}
+	char invalid_node = 0;
+	f.write(&invalid_node, 1);
+	if (data_size > 0)
+		f.write(data, data_size);
 }
 
 node::node(int64_t id, uint64_t length, char const * data) {
 	this->data = 0;
 	set_data(length, data);
 	this->id = id;
-	child = 0;
+	std::cout << "created node: " << this->id << " " << this->data_size << " "
+			<< (void*) this->data << std::endl;
 }
 
-std::list<node *> node::get_nodes_by_id(int64_t id) {
-	std::list<node *> l;
-	if (child) {
-		node * cur = child;
-		while (cur) {
-			if (cur->id == id) {
-				l.push_back(cur);
-			}
-			std::list<node *> subl = cur->get_nodes_by_id(id);
-			l.splice(l.end(), subl);
-			cur = cur->next;
+node::~node() {
+	if (data != 0)
+		delete data;
+	data = 0;
+}
+
+node_list node::get_nodes_by_id(int64_t id) {
+	node_list l;
+	node_list::iterator i = child.begin();
+	while (i != child.end()) {
+		if ((*i)->id == id) {
+			l.push_back((*i));
 		}
-	}
-	return l;
-}
-
-std::list<node *> node::get_childs() {
-	std::list<node *> l;
-	node * cur = child;
-	while (cur) {
-		l.push_back(cur);
-		cur = cur->next;
+		node_list subl = (*i)->get_nodes_by_id(id);
+		l.splice(l.end(), subl);
+		++i;
 	}
 	return l;
 }
 
 void node::append_child(node * c) {
-	c->next = 0;
-	if (child) {
-		node * cur = child;
-		while (cur->next) {
-			cur = cur->next;
-		}
-		cur->next = c;
-	} else {
-		child = c;
-	}
+	child.push_back(c);
 }
 
 void node::remove_child(node * c) {
-	node * cur = child;
-	while (cur) {
-		if (cur->next == c) {
-			cur->next = c->next;
-		}
-	}
+	child.remove(c);
 }
 
 void node::replace_child(node * old, node * c) {
-	node * cur = child;
-	while (cur) {
-		if (cur->next == old) {
-			c->next = old->next;
-			cur->next = c;
+	node_list::iterator i = child.begin();
+	while (i != child.end()) {
+		if (*i == old) {
+			child.insert(i, c);
+			child.remove(c);
+			break;
 		}
+		++i;
 	}
 }
 
 node * node::clone() {
-	node * result = new node(id, data_length, data);
-	if (child)
-		result->child = child->clone();
-	else
-		child = 0;
-	result->next = 0;
+	node * result = new node(id, data_size, data);
+	result->child = child;
 	return result;
 }
 
 void node::set_data(uint64_t size, char const * data) {
-	if (data)
-		delete[] data;
-	data_length = size;
-	if (size) {
+	if (this->data)
+		delete[] this->data;
+	data_size = size;
+	if (size > 0) {
 		this->data = new char[size];
 		memcpy(this->data, data, size);
 	} else {
 		this->data = 0;
 	}
+}
+
+void node::read_header(std::fstream & f) {
+	unsigned char x;
+	f.read(reinterpret_cast<char *> (&x), sizeof(char));
+	unsigned char id_length = (x >> 4) & 0x0F;
+	unsigned char size_length = (x) & 0x0F;
+	char * data;
+	if (id_length == 0 || id_length == 0) {
+		_header_size = 1;
+		_content_size = 0;
+		id = 0;
+		is_invalid = true;
+		return;
+	}
+
+	_header_size = 1 + id_length + size_length;
+
+	id = 0;
+	data = (char*) &id;
+	f.read(data, id_length);
+	_content_size = 0;
+	data = (char*) &_content_size;
+	f.read(data, size_length);
+	is_invalid = false;
+}
+
+char node::get_length(char const * v) const {
+	unsigned char z = 7;
+	while (z != 0 && v[z] == 0)
+		--z;
+	return z + 1;
+}
+
+char node::prepare_header() const {
+	int k = 0;
+	unsigned char id_length = get_length(reinterpret_cast<char const *> (&id));
+	unsigned char s_length = get_length(
+			reinterpret_cast<char const *> (&_content_size));
+	std::cout << "idl " << (int) id_length << " sl " << (int) s_length
+			<< " size " << _content_size << std::endl;
+	char x = ((id_length << 4) & 0xF0) | (s_length & 0x0F);
+	header_data[k++] = x;
+	char * data;
+	data = (char*) &id;
+	for (int i = 0; i < id_length; ++i) {
+		header_data[k++] = data[i];
+	}
+	data = (char*) &_content_size;
+	for (int i = 0; i < s_length; ++i) {
+		header_data[k++] = data[i];
+	}
+	_header_size = k;
+}
+
+void node::write_header(std::fstream & f) const {
+	f.write(header_data, _header_size);
+}
+
+node * node::get_node(...) {
+
+}
+
+char * node::get_value(...) {
+
 }
 
 }

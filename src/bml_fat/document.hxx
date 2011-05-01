@@ -1,7 +1,7 @@
 /*
  * document.hxx
  *
- *  Created on: 1 mai 2011
+ *  Created on: 30 avr. 2011
  *      Author: gschwind
  */
 
@@ -19,8 +19,6 @@ public:
 	document(char const * filename);
 	/* create an empty document */
 	document();
-
-	virtual ~document() { };
 	/* write the document to a new file */
 	void write(char const * filename) const;
 
