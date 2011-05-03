@@ -33,16 +33,14 @@ document::document(char const * filename) : node((uint64_t)-1) {
 	if (head[0] != 'B' || head[1] != 'M' || head[2] != 'L' || head[3] != 1) {
 		throw exception("bml signature not found");
 	}
-	std::cout << "toto" << std::endl;
 	new (this) node(f);
-	std::cout << "titi" << std::endl;
 	f.close();
 	if(id != -1)
 		throw exception("bad bml format");
 }
 
 document::document() : node((uint64_t)-1) {
-	std::cout << "toto" << data_size << std::endl;
+	std::cout << "toto" << _data_size << std::endl;
 }
 
 void document::write(char const * filename) const {
@@ -50,7 +48,6 @@ void document::write(char const * filename) const {
 	f.open(filename, std::fstream::out | std::fstream::binary);
 	char const head[] = { 'B', 'M', 'L', 1 };
 	f.write(head, sizeof(head));
-	prepare_write();
 	this->node::write(f);
 	f.close();
 }

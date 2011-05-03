@@ -25,29 +25,28 @@
 namespace bml {
 
 node::node(std::fstream & f) {
+
+	/* read the node header */
 	read_header(f);
-	std::cout << "read header = " << (int) _header_size << std::endl;
-	if (is_invalid)
+	if (_is_invalid)
 		return;
 
-	uint64_t s = 0;
+	/* read data */
+	if (_data_size > 0) {
+		_data = new char[_data_size];
+		f.read(_data, _data_size);
+	} else {
+		_data = 0;
+	}
+
+	/* read children node */
 	for (;;) {
 		node * n = new node(f);
-		if (n->is_invalid) {
-			s += 1;
+		if (n->_is_invalid) {
 			delete n;
-			break;
+			return;
 		}
-		s += n->_content_size + n->_header_size;
 		child.push_back(n);
-	}
-	data_size = _content_size - s;
-	std::cout << "data_size = " << data_size << std::endl;
-	if (data_size > 0) {
-		data = new char[data_size];
-		f.read(data, data_size);
-	} else {
-		data = 0;
 	}
 }
 
@@ -59,35 +58,51 @@ void node::prepare_write() const {
 		_content_size += (*i)->_content_size + (*i)->_header_size;
 		++i;
 	}
-	_content_size += data_size + 1;
+	_content_size += _data_size + 1;
 	prepare_header();
 }
 
 void node::write(std::fstream & f) const {
-	write_header(f);
+	/* write data */
+	int k = 0;
+	unsigned char id_length = get_length((char const *)&id);
+	unsigned char s_length = get_length((char const *)&_data_size);
+	char x = ((id_length << 4) & 0xf0) | (s_length & 0x0f);
+	f.write((char *)&x, 1);
+	char * data;
+
+	f.write((char*) &id, id_length);
+	f.write((char*) &_data_size, s_length);
+
+	/* write data */
+	if (_data_size > 0)
+		f.write(_data, _data_size);
+
+	/* write children node */
 	node_list::const_iterator i = child.begin();
 	while (i != child.end()) {
 		(*i)->write(f);
 		++i;
 	}
+
+	/* write the last node */
 	char invalid_node = 0;
 	f.write(&invalid_node, 1);
-	if (data_size > 0)
-		f.write(data, data_size);
+
 }
 
 node::node(int64_t id, uint64_t length, char const * data) {
-	this->data = 0;
+	this->_data = 0;
 	set_data(length, data);
 	this->id = id;
-	std::cout << "created node: " << this->id << " " << this->data_size << " "
-			<< (void*) this->data << std::endl;
+	std::cout << "created node: " << this->id << " " << this->_data_size << " "
+			<< (void*) this->_data << std::endl;
 }
 
 node::~node() {
-	if (data != 0)
-		delete data;
-	data = 0;
+	if (_data != 0)
+		delete _data;
+	_data = 0;
 }
 
 node_list node::get_nodes_by_id(int64_t id) {
@@ -125,49 +140,49 @@ void node::replace_child(node * old, node * c) {
 }
 
 node * node::clone() {
-	node * result = new node(id, data_size, data);
+	node * result = new node(id, _data_size, _data);
 	result->child = child;
 	return result;
 }
 
 void node::set_data(uint64_t size, char const * data) {
-	if (this->data)
-		delete[] this->data;
-	data_size = size;
+	if (this->_data)
+		delete[] this->_data;
+	_data_size = size;
 	if (size > 0) {
-		this->data = new char[size];
-		memcpy(this->data, data, size);
+		this->_data = new char[size];
+		memcpy(this->_data, data, size);
 	} else {
-		this->data = 0;
+		this->_data = 0;
 	}
 }
 
 void node::read_header(std::fstream & f) {
+	id = 0;
+	_data_size = 0;
+
 	unsigned char x;
-	f.read(reinterpret_cast<char *> (&x), sizeof(char));
+	f.read((char*)&x, sizeof(char));
 	unsigned char id_length = (x >> 4) & 0x0F;
 	unsigned char size_length = (x) & 0x0F;
-	char * data;
+
 	if (id_length == 0 || id_length == 0) {
 		_header_size = 1;
-		_content_size = 0;
-		id = 0;
-		is_invalid = true;
+		_is_invalid = true;
 		return;
 	}
 
-	_header_size = 1 + id_length + size_length;
+	_is_invalid = false;
 
-	id = 0;
-	data = (char*) &id;
-	f.read(data, id_length);
-	_content_size = 0;
-	data = (char*) &_content_size;
-	f.read(data, size_length);
-	is_invalid = false;
+	/* read the id */
+	f.read((char*) &id, id_length);
+
+	/* read the content size */
+	f.read((char*) &_data_size, size_length);
+
 }
 
-char node::get_length(char const * v) const {
+inline char node::get_length(char const * v) const {
 	unsigned char z = 7;
 	while (z != 0 && v[z] == 0)
 		--z;
@@ -176,11 +191,8 @@ char node::get_length(char const * v) const {
 
 char node::prepare_header() const {
 	int k = 0;
-	unsigned char id_length = get_length(reinterpret_cast<char const *> (&id));
-	unsigned char s_length = get_length(
-			reinterpret_cast<char const *> (&_content_size));
-	std::cout << "idl " << (int) id_length << " sl " << (int) s_length
-			<< " size " << _content_size << std::endl;
+	unsigned char id_length = get_length((char const *)&id);
+	unsigned char s_length = get_length((char const *)&_data_size);
 	char x = ((id_length << 4) & 0xF0) | (s_length & 0x0F);
 	header_data[k++] = x;
 	char * data;
@@ -188,7 +200,7 @@ char node::prepare_header() const {
 	for (int i = 0; i < id_length; ++i) {
 		header_data[k++] = data[i];
 	}
-	data = (char*) &_content_size;
+	data = (char*) &_data_size;
 	for (int i = 0; i < s_length; ++i) {
 		header_data[k++] = data[i];
 	}
@@ -212,7 +224,7 @@ node & node::operator[](int64_t id) {
 }
 
 char * node::operator*() {
-	return data;
+	return _data;
 }
 
 }

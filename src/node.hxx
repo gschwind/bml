@@ -38,9 +38,9 @@ class node {
 	/* document is my friend ! */
 	friend class document;
 	/* store data length */
-	int64_t data_size;
+	int64_t _data_size;
 	/* store data */
-	char * data;
+	char * _data;
 
 	/* node content */
 	mutable uint64_t _content_size;
@@ -48,7 +48,7 @@ class node {
 	mutable char _header_size;
 	mutable char header_data[HEADER_MAX_SIZE];
 
-	bool is_invalid;
+	bool _is_invalid;
 
 protected:
 
@@ -85,8 +85,8 @@ public:
 	 */
 	template<typename T>
 	T& get() {
-		if (this->data)
-			return *(reinterpret_cast<T*> (this->data));
+		if (this->_data)
+			return *(reinterpret_cast<T*> (this->_data));
 		else
 			throw exception("no data for this node.");
 	}
