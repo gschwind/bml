@@ -70,7 +70,7 @@ protected:
 
 public:
 	/* store id */
-	int64_t id;
+	uint64_t id;
 	/* child nodes */
 	node_list child;
 
@@ -102,8 +102,6 @@ public:
 	void set_data(uint64_t size, char const * data);
 	void read_header(std::fstream & f);
 
-	char get_length(char const * v) const;
-	char prepare_header() const;
 	void write_header(std::fstream & f) const;
 
 	node & operator[] (int64_t id);

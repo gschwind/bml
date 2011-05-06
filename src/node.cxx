@@ -50,29 +50,34 @@ node::node(std::fstream & f) {
 	}
 }
 
-void node::prepare_write() const {
-	_content_size = 0;
-	node_list::const_iterator i = child.begin();
-	while (i != child.end()) {
-		(*i)->prepare_write();
-		_content_size += (*i)->_content_size + (*i)->_header_size;
-		++i;
-	}
-	_content_size += _data_size + 1;
-	prepare_header();
-}
-
 void node::write(std::fstream & f) const {
 	/* write data */
 	int k = 0;
-	unsigned char id_length = get_length((char const *)&id);
-	unsigned char s_length = get_length((char const *)&_data_size);
+	unsigned char id_length;
+	unsigned int mask;
+
+	for (id_length = 1, mask = ~0xFF; id_length < 16; ++id_length, mask <<= 8) {
+		if ((id & mask) == 0)
+			break;
+	}
+
+	/* data length is unsigned the compaction is a bit
+	 * diferent.
+	 */
+	unsigned char s_length;
+	mask = 0xFF;
+	for (mask = ~0x00, s_length = 0; s_length < 16; ++s_length, mask <<= 8) {
+		if ((_data_size & mask) == 0)
+			break;
+	}
+
 	char x = ((id_length << 4) & 0xf0) | (s_length & 0x0f);
-	f.write((char *)&x, 1);
-	char * data;
+	f.write((char *) &x, 1);
 
 	f.write((char*) &id, id_length);
-	f.write((char*) &_data_size, s_length);
+
+	if (s_length > 0)
+		f.write((char*) &_data_size, s_length);
 
 	/* write data */
 	if (_data_size > 0)
@@ -162,11 +167,11 @@ void node::read_header(std::fstream & f) {
 	_data_size = 0;
 
 	unsigned char x;
-	f.read((char*)&x, sizeof(char));
+	f.read((char*) &x, sizeof(char));
 	unsigned char id_length = (x >> 4) & 0x0F;
 	unsigned char size_length = (x) & 0x0F;
 
-	if (id_length == 0 || id_length == 0) {
+	if (id_length == 0) {
 		_header_size = 1;
 		_is_invalid = true;
 		return;
@@ -178,37 +183,9 @@ void node::read_header(std::fstream & f) {
 	f.read((char*) &id, id_length);
 
 	/* read the content size */
-	f.read((char*) &_data_size, size_length);
+	if (size_length > 0)
+		f.read((char*) &_data_size, size_length);
 
-}
-
-inline char node::get_length(char const * v) const {
-	unsigned char z = 7;
-	while (z != 0 && v[z] == 0)
-		--z;
-	return z + 1;
-}
-
-char node::prepare_header() const {
-	int k = 0;
-	unsigned char id_length = get_length((char const *)&id);
-	unsigned char s_length = get_length((char const *)&_data_size);
-	char x = ((id_length << 4) & 0xF0) | (s_length & 0x0F);
-	header_data[k++] = x;
-	char * data;
-	data = (char*) &id;
-	for (int i = 0; i < id_length; ++i) {
-		header_data[k++] = data[i];
-	}
-	data = (char*) &_data_size;
-	for (int i = 0; i < s_length; ++i) {
-		header_data[k++] = data[i];
-	}
-	_header_size = k;
-}
-
-void node::write_header(std::fstream & f) const {
-	f.write(header_data, _header_size);
 }
 
 node & node::operator[](int64_t id) {

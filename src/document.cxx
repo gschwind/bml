@@ -25,28 +25,27 @@
 
 namespace bml {
 
-document::document(char const * filename) : node((uint64_t)-1) {
+document::document(char const * filename) : node((uint64_t)0) {
 	std::fstream f;
 	char head[4];
 	f.open(filename, std::fstream::in | std::fstream::binary);
 	f.read(head, 4);
-	if (head[0] != 'B' || head[1] != 'M' || head[2] != 'L' || head[3] != 1) {
+	if (head[0] != 'B' || head[1] != 'M' || head[2] != 'L' || head[3] != 0) {
 		throw exception("bml signature not found");
 	}
 	new (this) node(f);
 	f.close();
-	if(id != -1)
+	if(id != 0)
 		throw exception("bad bml format");
 }
 
-document::document() : node((uint64_t)-1) {
-	std::cout << "toto" << _data_size << std::endl;
+document::document() : node((uint64_t)0) {
 }
 
 void document::write(char const * filename) const {
 	std::fstream f;
 	f.open(filename, std::fstream::out | std::fstream::binary);
-	char const head[] = { 'B', 'M', 'L', 1 };
+	char const head[] = { 'B', 'M', 'L', 0 };
 	f.write(head, sizeof(head));
 	this->node::write(f);
 	f.close();
