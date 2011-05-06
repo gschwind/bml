@@ -56,7 +56,7 @@ void node::write(std::fstream & f) const {
 	unsigned char id_length;
 	unsigned int mask;
 
-	for (id_length = 1, mask = ~0xFF; id_length < 16; ++id_length, mask <<= 8) {
+	for (id_length = 1, mask = ~0xFF; id_length < 8; ++id_length, mask <<= 8) {
 		if ((id & mask) == 0)
 			break;
 	}
@@ -66,7 +66,7 @@ void node::write(std::fstream & f) const {
 	 */
 	unsigned char s_length;
 	mask = 0xFF;
-	for (mask = ~0x00, s_length = 0; s_length < 16; ++s_length, mask <<= 8) {
+	for (mask = ~0x00, s_length = 0; s_length < 8; ++s_length, mask <<= 8) {
 		if ((_data_size & mask) == 0)
 			break;
 	}
@@ -178,6 +178,9 @@ void node::read_header(std::fstream & f) {
 	}
 
 	_is_invalid = false;
+
+	if(id_length > 8 || size_length > 8)
+		throw exception("id or data size greater than (2^64)-1 are not supported");
 
 	/* read the id */
 	f.read((char*) &id, id_length);
